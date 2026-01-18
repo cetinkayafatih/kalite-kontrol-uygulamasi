@@ -232,28 +232,22 @@ interface MaterialState {
   loadFromSupabase: () => Promise<void>;
 }
 
-// Varsayılan malzeme tiplerinden eksik hata türlerini tamamla
+// Malzeme verilerini varsayılanlarla güncelle
+// Eğer hata türü veya kriter sayısı eksikse, varsayılanları kullan
 const mergeWithDefaults = (materials: MaterialType[]): MaterialType[] => {
   return materials.map((material) => {
     const defaultMaterial = defaultMaterialTypes.find(
-      (dm) => dm.id === material.id || dm.code === material.code
+      (dm) => dm.id === material.id || dm.code === material.code || dm.name === material.name
     );
     if (defaultMaterial) {
-      // Varsayılan hata türlerini ekle (eksik olanları)
-      const existingDefectIds = new Set(material.defectTypes.map((d) => d.id));
-      const missingDefects = defaultMaterial.defectTypes.filter(
-        (d) => !existingDefectIds.has(d.id)
-      );
-      // Varsayılan kriterleri ekle (eksik olanları)
-      const existingCriteriaIds = new Set(material.criteria.map((c) => c.id));
-      const missingCriteria = defaultMaterial.criteria.filter(
-        (c) => !existingCriteriaIds.has(c.id)
-      );
-      return {
-        ...material,
-        defectTypes: [...material.defectTypes, ...missingDefects],
-        criteria: [...material.criteria, ...missingCriteria],
-      };
+      // Eğer hata türü sayısı varsayılandan azsa, varsayılanları kullan
+      if (material.defectTypes.length < defaultMaterial.defectTypes.length) {
+        return {
+          ...material,
+          defectTypes: defaultMaterial.defectTypes,
+          criteria: defaultMaterial.criteria,
+        };
+      }
     }
     return material;
   });
