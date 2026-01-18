@@ -128,11 +128,13 @@ export const useSettingsStore = create<SettingsState>()(
 interface SupplierState {
   suppliers: Supplier[];
   isLoaded: boolean;
+  _hasHydrated: boolean;
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt'>, user?: AuditUser | null) => Promise<void>;
   updateSupplier: (id: string, supplier: Partial<Supplier>, user?: AuditUser | null) => Promise<void>;
   deleteSupplier: (id: string, user?: AuditUser | null) => Promise<void>;
   getSupplierById: (id: string) => Supplier | undefined;
   loadFromSupabase: () => Promise<void>;
+  setHasHydrated: (state: boolean) => void;
 }
 
 export const useSupplierStore = create<SupplierState>()(
@@ -140,6 +142,8 @@ export const useSupplierStore = create<SupplierState>()(
     (set, get) => ({
       suppliers: sampleSuppliers,
       isLoaded: false,
+      _hasHydrated: false,
+      setHasHydrated: (state: boolean) => set({ _hasHydrated: state }),
       addSupplier: async (supplier, user) => {
         const newSupplier: Supplier = {
           ...supplier,
@@ -214,6 +218,9 @@ export const useSupplierStore = create<SupplierState>()(
     }),
     {
       name: 'supplier-storage',
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );
@@ -225,11 +232,13 @@ export const useSupplierStore = create<SupplierState>()(
 interface MaterialState {
   materials: MaterialType[];
   isLoaded: boolean;
+  _hasHydrated: boolean;
   addMaterial: (material: Omit<MaterialType, 'id'>, user?: AuditUser | null) => Promise<void>;
   updateMaterial: (id: string, material: Partial<MaterialType>, user?: AuditUser | null) => Promise<void>;
   deleteMaterial: (id: string, user?: AuditUser | null) => Promise<void>;
   getMaterialById: (id: string) => MaterialType | undefined;
   loadFromSupabase: () => Promise<void>;
+  setHasHydrated: (state: boolean) => void;
 }
 
 // Malzeme verilerini varsayılanlarla güncelle
@@ -258,6 +267,8 @@ export const useMaterialStore = create<MaterialState>()(
     (set, get) => ({
       materials: defaultMaterialTypes,
       isLoaded: false,
+      _hasHydrated: false,
+      setHasHydrated: (state: boolean) => set({ _hasHydrated: state }),
       addMaterial: async (material, user) => {
         const newMaterial: MaterialType = {
           ...material,
@@ -331,6 +342,9 @@ export const useMaterialStore = create<MaterialState>()(
     }),
     {
       name: 'material-storage',
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
       // localStorage'dan yüklenirken eksik verileri tamamla
       merge: (persistedState: unknown, currentState: MaterialState) => {
         const state = persistedState as Partial<MaterialState> | undefined;
@@ -355,7 +369,9 @@ interface LotState {
   lots: Lot[];
   currentLot: Lot | null;
   isLoaded: boolean;
+  _hasHydrated: boolean;
   addLot: (lot: Omit<Lot, 'id' | 'lotNumber' | 'createdAt' | 'status' | 'decision' | 'defectCount'>, user?: AuditUser | null) => Promise<Lot>;
+  setHasHydrated: (state: boolean) => void;
   updateLot: (id: string, lot: Partial<Lot>, user?: AuditUser | null) => Promise<void>;
   deleteLot: (id: string, user?: AuditUser | null) => Promise<void>;
   setCurrentLot: (lot: Lot | null) => void;
@@ -371,6 +387,8 @@ export const useLotStore = create<LotState>()(
       lots: [],
       currentLot: null,
       isLoaded: false,
+      _hasHydrated: false,
+      setHasHydrated: (state: boolean) => set({ _hasHydrated: state }),
       addLot: async (lot, user) => {
         const newLot: Lot = {
           ...lot,
@@ -484,6 +502,9 @@ export const useLotStore = create<LotState>()(
     }),
     {
       name: 'lot-storage',
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );
@@ -496,11 +517,13 @@ interface InspectionState {
   inspections: Inspection[];
   currentInspections: Inspection[];
   isLoaded: boolean;
+  _hasHydrated: boolean;
   addInspection: (inspection: Omit<Inspection, 'id' | 'inspectedAt'>, user?: AuditUser | null) => Promise<void>;
   getInspectionsByLotId: (lotId: string) => Inspection[];
   clearCurrentInspections: () => void;
   setCurrentInspections: (inspections: Inspection[]) => void;
   loadFromSupabase: () => Promise<void>;
+  setHasHydrated: (state: boolean) => void;
 }
 
 export const useInspectionStore = create<InspectionState>()(
@@ -509,6 +532,8 @@ export const useInspectionStore = create<InspectionState>()(
       inspections: [],
       currentInspections: [],
       isLoaded: false,
+      _hasHydrated: false,
+      setHasHydrated: (state: boolean) => set({ _hasHydrated: state }),
       addInspection: async (inspection, user) => {
         const newInspection: Inspection = {
           ...inspection,
@@ -551,6 +576,9 @@ export const useInspectionStore = create<InspectionState>()(
     }),
     {
       name: 'inspection-storage',
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

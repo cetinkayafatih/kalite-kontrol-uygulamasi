@@ -13,7 +13,14 @@ import AuditLogs from './pages/AuditLogs';
 import Login from './pages/Login';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
-import { initializeFromSupabase, useSyncStore } from './store/useStore';
+import {
+  initializeFromSupabase,
+  useSyncStore,
+  useSupplierStore,
+  useMaterialStore,
+  useLotStore,
+  useInspectionStore,
+} from './store/useStore';
 import { useSwitchingStore } from './store/switchingStore';
 import { Loader2, CloudOff, RefreshCw } from 'lucide-react';
 
@@ -72,8 +79,34 @@ function App() {
   useEffect(() => {
     async function init() {
       try {
-        await initializeFromSupabase();
-        await useSwitchingStore.getState().loadFromSupabase();
+        // Tüm store'ların localStorage'dan hydrate olmasını bekle
+        const waitForHydration = () => {
+          return new Promise<void>((resolve) => {
+            const checkHydration = () => {
+              const allHydrated =
+                useSupplierStore.getState()._hasHydrated &&
+                useMaterialStore.getState()._hasHydrated &&
+                useLotStore.getState()._hasHydrated &&
+                useInspectionStore.getState()._hasHydrated;
+
+              if (allHydrated) {
+                resolve();
+              } else {
+                setTimeout(checkHydration, 10);
+              }
+            };
+            checkHydration();
+          });
+        };
+
+        await waitForHydration();
+
+        // Sadece localStorage'da lot verisi yoksa Supabase'den çek
+        const existingLots = useLotStore.getState().lots;
+        if (existingLots.length === 0) {
+          await initializeFromSupabase();
+          await useSwitchingStore.getState().loadFromSupabase();
+        }
       } catch (error) {
         console.error('Initialization error:', error);
       } finally {
