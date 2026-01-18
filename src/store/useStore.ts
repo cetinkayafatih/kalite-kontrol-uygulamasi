@@ -232,6 +232,33 @@ interface MaterialState {
   loadFromSupabase: () => Promise<void>;
 }
 
+// Varsayılan malzeme tiplerinden eksik hata türlerini tamamla
+const mergeWithDefaults = (materials: MaterialType[]): MaterialType[] => {
+  return materials.map((material) => {
+    const defaultMaterial = defaultMaterialTypes.find(
+      (dm) => dm.id === material.id || dm.code === material.code
+    );
+    if (defaultMaterial) {
+      // Varsayılan hata türlerini ekle (eksik olanları)
+      const existingDefectIds = new Set(material.defectTypes.map((d) => d.id));
+      const missingDefects = defaultMaterial.defectTypes.filter(
+        (d) => !existingDefectIds.has(d.id)
+      );
+      // Varsayılan kriterleri ekle (eksik olanları)
+      const existingCriteriaIds = new Set(material.criteria.map((c) => c.id));
+      const missingCriteria = defaultMaterial.criteria.filter(
+        (c) => !existingCriteriaIds.has(c.id)
+      );
+      return {
+        ...material,
+        defectTypes: [...material.defectTypes, ...missingDefects],
+        criteria: [...material.criteria, ...missingCriteria],
+      };
+    }
+    return material;
+  });
+};
+
 export const useMaterialStore = create<MaterialState>()(
   persist(
     (set, get) => ({
@@ -287,7 +314,9 @@ export const useMaterialStore = create<MaterialState>()(
         try {
           const materials = await materialService.getAll();
           if (materials.length > 0) {
-            set({ materials, isLoaded: true });
+            // Eksik hata türlerini ve kriterleri tamamla
+            const mergedMaterials = mergeWithDefaults(materials);
+            set({ materials: mergedMaterials, isLoaded: true });
           } else {
             // Seed with defaults
             for (const material of defaultMaterialTypes) {
@@ -297,16 +326,29 @@ export const useMaterialStore = create<MaterialState>()(
                 // Ignore duplicate errors
               }
             }
-            set({ isLoaded: true });
+            set({ materials: defaultMaterialTypes, isLoaded: true });
           }
         } catch (error) {
           console.error('Failed to load materials from Supabase:', error);
-          set({ isLoaded: true });
+          // Hata durumunda varsayılanları kullan
+          set({ materials: defaultMaterialTypes, isLoaded: true });
         }
       },
     }),
     {
       name: 'material-storage',
+      // localStorage'dan yüklenirken eksik verileri tamamla
+      merge: (persistedState: unknown, currentState: MaterialState) => {
+        const state = persistedState as Partial<MaterialState> | undefined;
+        if (state?.materials) {
+          return {
+            ...currentState,
+            ...state,
+            materials: mergeWithDefaults(state.materials),
+          };
+        }
+        return { ...currentState, ...state };
+      },
     }
   )
 );
