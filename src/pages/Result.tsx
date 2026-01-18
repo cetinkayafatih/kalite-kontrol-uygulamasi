@@ -25,6 +25,8 @@ import {
   useMaterialStore,
   useSupplierStore
 } from '../store/useStore';
+import { useSwitchingStore } from '../store/switchingStore';
+import SwitchingBadge from '../components/switching/SwitchingBadge';
 import { formatDate } from '../data/samplingData';
 import { generatePDF } from '../utils/pdf';
 import toast from 'react-hot-toast';
@@ -48,6 +50,7 @@ export default function Result() {
   const allInspections = useInspectionStore((state) => state.inspections);
   const materials = useMaterialStore((state) => state.materials);
   const suppliers = useSupplierStore((state) => state.suppliers);
+  const getSwitchingState = useSwitchingStore((state) => state.getState);
 
   // Find the lot
   const lotId = stateData.lotId;
@@ -83,6 +86,7 @@ export default function Result() {
 
   const material = materials.find((m) => m.id === lot.materialTypeId);
   const supplier = suppliers.find((s) => s.id === lot.supplierId);
+  const switchingState = getSwitchingState(lot.supplierId, lot.materialTypeId);
 
   // Calculate defect distribution
   const defectDistribution: Record<string, number> = {};
@@ -108,6 +112,7 @@ export default function Result() {
         material,
         inspections,
         defectDistribution: chartData,
+        switchingLevel: switchingState.currentLevel,
       });
       toast.success('PDF raporu oluşturuldu');
     } catch (error) {
@@ -234,6 +239,16 @@ export default function Result() {
               <span className="font-medium text-gray-900 dark:text-white">
                 Seviye {lot.inspectionLevel}
               </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-slate-700">
+              <span className="text-gray-500 dark:text-gray-400">Kontrol Durumu</span>
+              <SwitchingBadge
+                supplierId={lot.supplierId}
+                materialTypeId={lot.materialTypeId}
+                supplierName={supplier?.name}
+                materialName={material?.name}
+                size="sm"
+              />
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100 dark:border-slate-700">
               <span className="text-gray-500 dark:text-gray-400">AQL</span>

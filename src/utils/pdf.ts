@@ -1,6 +1,8 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Lot, Supplier, MaterialType, Inspection } from '../types';
+import type { SwitchingLevel } from '../types/switching';
+import { SWITCHING_LEVEL_LABELS } from '../types/switching';
 import { formatDate, formatDateTime } from '../data/samplingData';
 
 interface PDFData {
@@ -9,6 +11,7 @@ interface PDFData {
   material?: MaterialType;
   inspections: Inspection[];
   defectDistribution: { name: string; count: number }[];
+  switchingLevel?: SwitchingLevel;
 }
 
 // Türkçe karakterleri ASCII eşdeğerlerine çevirme
@@ -33,7 +36,7 @@ function tr(text: string): string {
 }
 
 export async function generatePDF(data: PDFData): Promise<void> {
-  const { lot, supplier, material, defectDistribution } = data;
+  const { lot, supplier, material, defectDistribution, switchingLevel } = data;
 
   // Birim belirleme - malzeme türüne göre
   const unit = material?.unit || 'adet';
@@ -73,7 +76,7 @@ export async function generatePDF(data: PDFData): Promise<void> {
   doc.setFontSize(10);
 
   const supplierData = [
-    [tr('Tedarikçi'), supplier?.name || '-'],
+    [tr('Tedarikçi'), tr(supplier?.name || '-')],
     [tr('Sipariş No'), lot.orderNumber || '-'],
     ['Teslim Tarihi', formatDate(lot.receivedDate)],
   ];
@@ -121,9 +124,15 @@ export async function generatePDF(data: PDFData): Promise<void> {
   doc.setFont('helvetica', 'bold');
   doc.text(tr('ÖRNEKLEME PARAMETRELERİ'), 14, samplingY);
 
+  // Switching seviye metni
+  const switchingLevelText = switchingLevel
+    ? tr(SWITCHING_LEVEL_LABELS[switchingLevel])
+    : 'Normal';
+
   const samplingData = [
     ['Standart', 'ISO 2859-1'],
-    ['Muayene Seviyesi', `Normal - Seviye ${lot.inspectionLevel}`],
+    ['Muayene Seviyesi', `Seviye ${lot.inspectionLevel}`],
+    ['Kontrol Durumu', switchingLevelText],
     ['AQL', `%${lot.aql}`],
     [tr('Örneklem Kodu'), lot.sampleCode],
     [tr('Örneklem Büyüklüğü'), `${lot.sampleSize} ${unit}`],
@@ -201,7 +210,10 @@ export async function generatePDF(data: PDFData): Promise<void> {
 
   // Defect Distribution
   if (defectDistribution.length > 0) {
-    const defectY = decisionY + 30;
+    // Hata dağılımı tablosunu yeni sayfada başlat
+    doc.addPage();
+    const defectY = 20;
+
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.text(tr('HATA DAĞILIMI'), 14, defectY);

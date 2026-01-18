@@ -7,7 +7,8 @@ import {
   Pause,
   RotateCcw,
   ChevronRight,
-  Package
+  Package,
+  Layers
 } from 'lucide-react';
 import Card, { CardHeader } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -20,7 +21,11 @@ import {
   useMaterialStore,
   useSupplierStore
 } from '../store/useStore';
+import { useSwitchingStore } from '../store/switchingStore';
 import { makeDecision } from '../data/samplingData';
+import { SWITCHING_LEVEL_LABELS } from '../types/switching';
+import SwitchingBadge from '../components/switching/SwitchingBadge';
+import StopProductionModal from '../components/switching/StopProductionModal';
 import toast from 'react-hot-toast';
 
 interface DefectSelection {
@@ -33,10 +38,11 @@ export default function Inspection() {
   const location = useLocation();
   const lotId = location.state?.lotId;
 
-  const { lots, currentLot, setCurrentLot, updateLot, completeLot, getLotById } = useLotStore();
+  const { lots, currentLot, setCurrentLot, updateLot, completeLot, getLotById, updateCurrentSampleIndex } = useLotStore();
   const { addInspection, clearCurrentInspections } = useInspectionStore();
   const materials = useMaterialStore((state) => state.materials);
   const suppliers = useSupplierStore((state) => state.suppliers);
+  const updateSwitchingState = useSwitchingStore((state) => state.updateState);
 
   const [currentSampleNumber, setCurrentSampleNumber] = useState(1);
   const [defectCount, setDefectCount] = useState(0);
@@ -47,6 +53,7 @@ export default function Inspection() {
   const [isPaused, setIsPaused] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
   const [finalDecision, setFinalDecision] = useState<'accepted' | 'rejected' | null>(null);
+  const [showStopModal, setShowStopModal] = useState(false);
 
   // Initialize lot
   useEffect(() => {
@@ -100,7 +107,10 @@ export default function Inspection() {
     if (currentSampleNumber >= currentLot.sampleSize) {
       finishInspection();
     } else {
+      const nextIndex = currentSampleNumber;
       setCurrentSampleNumber((prev) => prev + 1);
+      // Store'da güncel indeksi kaydet
+      updateCurrentSampleIndex(currentLot.id, nextIndex);
     }
   };
 
@@ -135,7 +145,10 @@ export default function Inspection() {
     } else if (currentSampleNumber >= currentLot.sampleSize) {
       finishInspection();
     } else {
+      const nextIndex = currentSampleNumber;
       setCurrentSampleNumber((prev) => prev + 1);
+      // Store'da güncel indeksi kaydet
+      updateCurrentSampleIndex(currentLot.id, nextIndex);
     }
 
     // Reset modal state
@@ -159,18 +172,58 @@ export default function Inspection() {
     if (!currentLot || !finalDecision) return;
 
     completeLot(currentLot.id, finalDecision, defectCount);
+
+    // Switching kurallarını güncelle
+    const { transition, shouldStop } = updateSwitchingState(
+      currentLot.supplierId,
+      currentLot.materialTypeId,
+      finalDecision,
+      currentLot.id,
+      currentLot.lotNumber
+    );
+
+    // Seviye değişimi bildirimi
+    if (transition) {
+      const fromLabel = SWITCHING_LEVEL_LABELS[transition.fromLevel];
+      const toLabel = SWITCHING_LEVEL_LABELS[transition.toLevel];
+      toast(
+        `Kontrol seviyesi değişti: ${fromLabel} → ${toLabel}`,
+        {
+          icon: transition.toLevel === 'tightened' ? '⚠️' : transition.toLevel === 'reduced' ? '✅' : 'ℹ️',
+          duration: 5000,
+        }
+      );
+    }
+
     toast.success(
       finalDecision === 'accepted'
         ? 'Parti kabul edildi!'
         : 'Parti reddedildi.'
     );
 
+    // Üretim durdurma uyarısı
+    if (shouldStop) {
+      setShowStopModal(true);
+    } else {
+      navigate('/result', {
+        state: {
+          lotId: currentLot.id,
+          decision: finalDecision,
+          defectCount,
+          sampleSize: currentLot.sampleSize,
+        },
+      });
+    }
+  };
+
+  const handleStopModalClose = () => {
+    setShowStopModal(false);
     navigate('/result', {
       state: {
-        lotId: currentLot.id,
+        lotId: currentLot?.id,
         decision: finalDecision,
         defectCount,
-        sampleSize: currentLot.sampleSize,
+        sampleSize: currentLot?.sampleSize,
       },
     });
   };
@@ -258,9 +311,20 @@ export default function Inspection() {
       <Card padding="sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-              {currentLot.lotNumber}
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                {currentLot.lotNumber}
+              </h2>
+              {supplier && material && (
+                <SwitchingBadge
+                  supplierId={currentLot.supplierId}
+                  materialTypeId={currentLot.materialTypeId}
+                  supplierName={supplier.name}
+                  materialName={material.name}
+                  size="sm"
+                />
+              )}
+            </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {supplier?.name} | {material?.name} | {currentLot.quantity.toLocaleString('tr-TR')} {material?.unit || 'adet'}
             </p>
@@ -358,10 +422,123 @@ export default function Inspection() {
       {/* Sample Control */}
       {!isPaused && currentDecision !== 'rejected' && (
         <Card>
-          <CardHeader
-            title={`Numune #${currentSampleNumber}`}
-            subtitle="Kontrol sonucunu işaretleyin"
-          />
+          {/* Position Code Display - Küme örneklemesi için */}
+          {currentLot.samplePositions && currentLot.samplePositions.length > 0 && (
+            <div className="mb-6">
+              {(() => {
+                const currentPosition = currentLot.samplePositions[currentSampleNumber - 1];
+                if (!currentPosition) return null;
+
+                // Bu poşetten kaç numune alınacağını hesapla
+                // Aynı poşetten önceki numuneleri say (pozisyon listesinde sırayla)
+                const allPositions = currentLot.samplePositions;
+                let samplesInPackageTotal = 0;
+                let currentIndexInPackage = 0;
+
+                for (let i = 0; i < allPositions.length; i++) {
+                  const pos = allPositions[i];
+                  if (pos.pallet === currentPosition.pallet && pos.package === currentPosition.package) {
+                    samplesInPackageTotal++;
+                    if (i < currentSampleNumber - 1) {
+                      // Bu pozisyon şu anki numuneden önce geliyorsa
+                      currentIndexInPackage++;
+                    } else if (i === currentSampleNumber - 1) {
+                      // Bu tam şu anki numune
+                      currentIndexInPackage++;
+                    }
+                  }
+                }
+
+                const samplesInPackage = { length: samplesInPackageTotal };
+
+                // Sonraki pozisyon
+                const nextPosition = currentLot.samplePositions[currentSampleNumber];
+                const isNewPackageNext = nextPosition && (
+                  nextPosition.pallet !== currentPosition.pallet ||
+                  nextPosition.package !== currentPosition.package
+                );
+
+                return (
+                  <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm text-purple-600 dark:text-purple-400 font-medium">
+                        Numune {currentSampleNumber} / {currentLot.sampleSize}
+                      </span>
+                      <span className="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full">
+                        Poşetten: {currentIndexInPackage}/{samplesInPackage.length}
+                      </span>
+                    </div>
+
+                    {/* Pozisyon Kodu */}
+                    <div className="text-center py-4">
+                      <div className="inline-flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-purple-100 dark:border-purple-700">
+                        <Package className="w-6 h-6 text-purple-500" />
+                        <span className="text-3xl font-mono font-bold text-gray-900 dark:text-white tracking-wider">
+                          {currentPosition.code}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                        <span>Palet {currentPosition.pallet}</span>
+                        <span>•</span>
+                        <span>Poşet {currentPosition.package}</span>
+                      </div>
+                    </div>
+
+                    {/* Pozisyon Etiketi */}
+                    <div className={`text-center py-3 rounded-lg mt-3 ${
+                      currentPosition.position === '01'
+                        ? 'bg-blue-100 dark:bg-blue-900/30'
+                        : currentPosition.position === '02'
+                        ? 'bg-amber-100 dark:bg-amber-900/30'
+                        : 'bg-emerald-100 dark:bg-emerald-900/30'
+                    }`}>
+                      <Layers className={`w-5 h-5 mx-auto mb-1 ${
+                        currentPosition.position === '01'
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : currentPosition.position === '02'
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                      }`} />
+                      <span className={`text-lg font-bold ${
+                        currentPosition.position === '01'
+                          ? 'text-blue-700 dark:text-blue-300'
+                          : currentPosition.position === '02'
+                          ? 'text-amber-700 dark:text-amber-300'
+                          : 'text-emerald-700 dark:text-emerald-300'
+                      }`}>
+                        {currentPosition.positionLabel}
+                      </span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {currentPosition.position === '01' && 'Yığının en üstünden alın'}
+                        {currentPosition.position === '02' && 'Yığının ortasından alın'}
+                        {currentPosition.position === '03' && 'Yığının en altından alın'}
+                      </p>
+                    </div>
+
+                    {/* Sonraki pozisyon bilgisi */}
+                    {nextPosition && (
+                      <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700 text-center text-sm text-gray-500 dark:text-gray-400">
+                        Sonraki: <span className="font-mono font-medium">{nextPosition.code}</span>
+                        {isNewPackageNext && (
+                          <span className="ml-2 text-purple-600 dark:text-purple-400">
+                            (yeni poşet)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {!currentLot.samplePositions && (
+            <CardHeader
+              title={`Numune #${currentSampleNumber}`}
+              subtitle="Kontrol sonucunu işaretleyin"
+            />
+          )}
 
           {/* Criteria Checklist */}
           {material && (
@@ -578,6 +755,18 @@ export default function Inspection() {
           </div>
         </div>
       </Modal>
+
+      {/* Stop Production Modal - 5 ardışık RED */}
+      {currentLot && supplier && material && (
+        <StopProductionModal
+          isOpen={showStopModal}
+          onClose={handleStopModalClose}
+          supplierId={currentLot.supplierId}
+          supplierName={supplier.name}
+          materialTypeId={currentLot.materialTypeId}
+          materialName={material.name}
+        />
+      )}
     </div>
   );
 }

@@ -152,6 +152,7 @@ interface LotState {
   setCurrentLot: (lot: Lot | null) => void;
   getLotById: (id: string) => Lot | undefined;
   completeLot: (id: string, decision: 'accepted' | 'rejected', defectCount: number) => void;
+  updateCurrentSampleIndex: (id: string, index: number) => void;
 }
 
 export const useLotStore = create<LotState>()(
@@ -212,6 +213,16 @@ export const useLotStore = create<LotState>()(
                   defectCount,
                   inspectionDate: new Date().toISOString(),
                 }
+              : state.currentLot,
+        })),
+      updateCurrentSampleIndex: (id, index) =>
+        set((state) => ({
+          lots: state.lots.map((l) =>
+            l.id === id ? { ...l, currentSampleIndex: index } : l
+          ),
+          currentLot:
+            state.currentLot?.id === id
+              ? { ...state.currentLot, currentSampleIndex: index }
               : state.currentLot,
         })),
     }),

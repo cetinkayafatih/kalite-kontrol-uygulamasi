@@ -41,6 +41,22 @@ export interface DefectType {
   severity: 'critical' | 'major' | 'minor';
 }
 
+// Parti yapısı konfigürasyonu
+export interface PackageConfig {
+  palletCount: number;       // P - Palet sayısı
+  packagesPerPallet: number; // B - Palet başı poşet sayısı
+  itemsPerPackage: number;   // L - Poşet içi etiket sayısı
+}
+
+// Numune pozisyonu (clusterSampling.ts ile senkron)
+export interface SamplePosition {
+  code: string;           // "02-11-02" formatında
+  pallet: number;         // Palet numarası
+  package: number;        // Poşet numarası
+  position: '01' | '02' | '03'; // Konum kodu
+  positionLabel: string;  // "ÜSTTEN", "ORTADAN", "ALTTAN"
+}
+
 export interface Lot {
   id: string;
   lotNumber: string;
@@ -62,6 +78,10 @@ export interface Lot {
   notes: string;
   createdAt: string;
   defectCount: number;
+  // Küme örnekleme için yeni alanlar
+  packageConfig?: PackageConfig;
+  samplePositions?: SamplePosition[];
+  currentSampleIndex?: number;
 }
 
 export interface Inspection {

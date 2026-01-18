@@ -20,14 +20,19 @@ import Badge from '../components/common/Badge';
 import {
   useSupplierStore,
   useLotStore,
+  useMaterialStore,
   useAnalytics
 } from '../store/useStore';
+import { useSwitchingStore } from '../store/switchingStore';
+import { SwitchingIcon } from '../components/switching/SwitchingBadge';
 import toast from 'react-hot-toast';
 
 export default function Suppliers() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier } = useSupplierStore();
   const lots = useLotStore((state) => state.lots);
+  const materials = useMaterialStore((state) => state.materials);
   const { getSupplierPerformance } = useAnalytics();
+  const getAllStatesForSupplier = useSwitchingStore((state) => state.getAllStatesForSupplier);
 
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -241,10 +246,30 @@ export default function Suppliers() {
               )}
 
               {/* Status Badge */}
-              <div className="mt-4">
+              <div className="mt-4 flex items-center gap-2 flex-wrap">
                 <Badge variant={supplier.isActive ? 'success' : 'default'}>
                   {supplier.isActive ? 'Aktif' : 'Pasif'}
                 </Badge>
+
+                {/* Switching States */}
+                {getAllStatesForSupplier(supplier.id).map((switchState) => {
+                  const material = materials.find((m) => m.id === switchState.materialTypeId);
+                  if (!material || switchState.currentLevel === 'normal') return null;
+
+                  return (
+                    <div
+                      key={switchState.materialTypeId}
+                      className="flex items-center gap-1 text-xs"
+                      title={`${material.name}: ${switchState.currentLevel === 'tightened' ? 'Sıkılaştırılmış' : 'Gevşetilmiş'}`}
+                    >
+                      <SwitchingIcon
+                        level={switchState.currentLevel}
+                        shouldStop={switchState.shouldStopProduction}
+                      />
+                      <span className="text-gray-500 dark:text-gray-400">{material.name}</span>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           );

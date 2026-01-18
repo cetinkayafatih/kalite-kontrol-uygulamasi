@@ -5,23 +5,34 @@ import {
   Info,
   ArrowRight,
   Plus,
-  Building2
+  Building2,
+  Package,
+  Layers
 } from 'lucide-react';
 import Card, { CardHeader } from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input, { Select, TextArea } from '../components/common/Input';
 import Modal from '../components/common/Modal';
+import SwitchingBadge from '../components/switching/SwitchingBadge';
 import {
   useLotStore,
   useSupplierStore,
   useMaterialStore,
   useSettingsStore
 } from '../store/useStore';
+import { useSwitchingStore } from '../store/switchingStore';
 import {
   calculateSampling,
   aqlOptions,
   inspectionLevels,
 } from '../data/samplingData';
+import { getAdjustedSampleSize, getAdjustedAcceptance } from '../utils/switchingLogic';
+import {
+  generateSamplePositions,
+  calculateSamplingStats,
+} from '../utils/clusterSampling';
+import type { PackageConfig } from '../utils/clusterSampling';
+import { SWITCHING_LEVEL_LABELS } from '../types/switching';
 import toast from 'react-hot-toast';
 
 export default function LotEntry() {
@@ -31,6 +42,7 @@ export default function LotEntry() {
   const addSupplier = useSupplierStore((state) => state.addSupplier);
   const materials = useMaterialStore((state) => state.materials);
   const { settings } = useSettingsStore();
+  const getSwitchingState = useSwitchingStore((state) => state.getState);
 
   const [formData, setFormData] = useState({
     supplierId: '',
@@ -43,6 +55,21 @@ export default function LotEntry() {
     inspectedBy: '',
     notes: '',
   });
+
+  // Parti yapısı konfigürasyonu (Küme örneklemesi için)
+  const [packageConfig, setPackageConfig] = useState<PackageConfig>({
+    palletCount: 0,
+    packagesPerPallet: 0,
+    itemsPerPackage: 0,
+  });
+
+  // Örnekleme istatistikleri
+  const [samplingStats, setSamplingStats] = useState<{
+    totalPackages: number;
+    totalItems: number;
+    samplesPerPackage: number;
+    packagesToOpen: number;
+  } | null>(null);
 
   const [samplingResult, setSamplingResult] = useState<{
     sampleCode: string;
@@ -61,16 +88,52 @@ export default function LotEntry() {
     address: '',
   });
 
+  const selectedMaterial = materials.find(m => m.id === formData.materialTypeId);
+  const selectedSupplier = suppliers.find(s => s.id === formData.supplierId);
+
+  // Switching state for selected supplier + material
+  const switchingState = formData.supplierId && formData.materialTypeId
+    ? getSwitchingState(formData.supplierId, formData.materialTypeId)
+    : null;
+
   // Calculate sampling when quantity or AQL changes
   useEffect(() => {
     const quantity = parseInt(formData.quantity);
     if (quantity > 0) {
-      const result = calculateSampling(quantity, formData.aql, formData.inspectionLevel);
-      setSamplingResult(result);
+      const baseResult = calculateSampling(quantity, formData.aql, formData.inspectionLevel);
+
+      if (baseResult && switchingState) {
+        // Switching seviyesine göre ayarla
+        const adjustedSampleSize = getAdjustedSampleSize(baseResult.sampleSize, switchingState.currentLevel);
+        const adjustedAcceptance = getAdjustedAcceptance(
+          baseResult.acceptanceNumber,
+          baseResult.rejectionNumber,
+          switchingState.currentLevel
+        );
+
+        setSamplingResult({
+          ...baseResult,
+          sampleSize: adjustedSampleSize,
+          acceptanceNumber: adjustedAcceptance.acceptance,
+          rejectionNumber: adjustedAcceptance.rejection,
+        });
+      } else {
+        setSamplingResult(baseResult);
+      }
     } else {
       setSamplingResult(null);
     }
-  }, [formData.quantity, formData.aql, formData.inspectionLevel]);
+  }, [formData.quantity, formData.aql, formData.inspectionLevel, switchingState]);
+
+  // Parti yapısı değiştiğinde örnekleme istatistiklerini hesapla
+  useEffect(() => {
+    if (samplingResult && packageConfig.palletCount > 0 && packageConfig.packagesPerPallet > 0) {
+      const stats = calculateSamplingStats(samplingResult.sampleSize, packageConfig);
+      setSamplingStats(stats);
+    } else {
+      setSamplingStats(null);
+    }
+  }, [samplingResult, packageConfig]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -78,6 +141,14 @@ export default function LotEntry() {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
+    });
+  };
+
+  const handlePackageConfigChange = (field: keyof PackageConfig, value: string) => {
+    const numValue = parseInt(value) || 0;
+    setPackageConfig({
+      ...packageConfig,
+      [field]: numValue,
     });
   };
 
@@ -92,6 +163,15 @@ export default function LotEntry() {
     if (!samplingResult) {
       toast.error('Geçerli bir parti miktarı girin');
       return;
+    }
+
+    // Parti yapısı girilmişse numune pozisyonlarını oluştur
+    let samplePositions = undefined;
+    let lotPackageConfig = undefined;
+
+    if (packageConfig.palletCount > 0 && packageConfig.packagesPerPallet > 0) {
+      samplePositions = generateSamplePositions(samplingResult.sampleSize, packageConfig);
+      lotPackageConfig = { ...packageConfig };
     }
 
     const lot = addLot({
@@ -109,6 +189,9 @@ export default function LotEntry() {
       inspectionDate: '',
       inspectedBy: formData.inspectedBy,
       notes: formData.notes,
+      packageConfig: lotPackageConfig,
+      samplePositions: samplePositions,
+      currentSampleIndex: 0,
     });
 
     toast.success('Parti başarıyla oluşturuldu');
@@ -137,8 +220,6 @@ export default function LotEntry() {
       address: '',
     });
   };
-
-  const selectedMaterial = materials.find(m => m.id === formData.materialTypeId);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -226,6 +307,26 @@ export default function LotEntry() {
               placeholder="Ad Soyad"
             />
           </div>
+
+          {/* Switching Badge - Tedarikçi ve malzeme seçiliyse göster */}
+          {switchingState && selectedSupplier && selectedMaterial && (
+            <div className="mt-4 p-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-200 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Kontrol Seviyesi</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    {selectedSupplier.name} - {selectedMaterial.name}
+                  </p>
+                </div>
+                <SwitchingBadge
+                  supplierId={formData.supplierId}
+                  materialTypeId={formData.materialTypeId}
+                  supplierName={selectedSupplier.name}
+                  materialName={selectedMaterial.name}
+                />
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Sampling Parameters */}
@@ -259,9 +360,20 @@ export default function LotEntry() {
               <div className="flex items-start gap-3">
                 <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
                 <div className="flex-1">
-                  <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3">
-                    Hesaplanan Değerler
-                  </h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-blue-900 dark:text-blue-100">
+                      Hesaplanan Değerler
+                    </h4>
+                    {switchingState && switchingState.currentLevel !== 'normal' && (
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        switchingState.currentLevel === 'tightened'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                          : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                      }`}>
+                        {SWITCHING_LEVEL_LABELS[switchingState.currentLevel]} muayene
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-3 gap-4">
                     <div className="text-center p-3 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
                       <p className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -311,6 +423,117 @@ export default function LotEntry() {
             </div>
           )}
         </Card>
+
+        {/* Parti Yapısı - Küme Örneklemesi */}
+        {samplingResult && (
+          <Card className="mb-6">
+            <CardHeader
+              title="Parti Yapısı (İsteğe Bağlı)"
+              subtitle="Küme örneklemesi için palet ve poşet bilgilerini girin"
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <Package className="w-4 h-4 inline mr-1" />
+                  Palet Sayısı (P)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={packageConfig.palletCount || ''}
+                  onChange={(e) => handlePackageConfigChange('palletCount', e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  placeholder="Örn: 4"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <Layers className="w-4 h-4 inline mr-1" />
+                  Poşet/Palet (B)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={packageConfig.packagesPerPallet || ''}
+                  onChange={(e) => handlePackageConfigChange('packagesPerPallet', e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  placeholder="Örn: 16"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Etiket/Poşet (L)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={packageConfig.itemsPerPackage || ''}
+                  onChange={(e) => handlePackageConfigChange('itemsPerPackage', e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  placeholder="Örn: 250"
+                />
+              </div>
+            </div>
+
+            {/* Örnekleme İstatistikleri */}
+            {samplingStats && (
+              <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-100 dark:border-purple-800">
+                <div className="flex items-start gap-3">
+                  <Package className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-purple-900 dark:text-purple-100 mb-3">
+                      Küme Örnekleme Planı
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center p-3 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">
+                          {samplingStats.totalPackages}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Toplam Poşet
+                        </p>
+                      </div>
+                      <div className="text-center p-3 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">
+                          {samplingStats.totalItems.toLocaleString('tr-TR')}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Toplam Etiket
+                        </p>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                        <p className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                          {samplingStats.packagesToOpen}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Açılacak Poşet
+                        </p>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                        <p className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                          ~{samplingStats.samplesPerPackage}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Poşet Başı Etiket
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-start gap-2 text-sm text-purple-700 dark:text-purple-300">
+                      <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <p>
+                        <strong>{samplingStats.packagesToOpen}</strong> rastgele poşet açılacak ve her poşetten{' '}
+                        <strong>~{samplingStats.samplesPerPackage}</strong> etiket kontrol edilecek.
+                        Pozisyon kodları: <span className="font-mono">PP-BB-NN</span>{' '}
+                        (01=Üst, 02=Orta, 03=Alt)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Material Criteria Preview */}
         {selectedMaterial && (

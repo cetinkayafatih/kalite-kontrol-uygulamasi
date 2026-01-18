@@ -7,7 +7,8 @@ import {
   Clock,
   TrendingUp,
   Plus,
-  ArrowRight
+  ArrowRight,
+  Shuffle
 } from 'lucide-react';
 import {
   AreaChart,
@@ -33,8 +34,14 @@ import {
   useAnalytics
 } from '../store/useStore';
 import { formatDate } from '../data/samplingData';
+import { selectRandomLot } from '../utils/clusterSampling';
+import toast from 'react-hot-toast';
 
-const COLORS = ['#10B981', '#EF4444', '#F59E0B', '#3B82F6'];
+// Pie chart renkleri - kategoriye özel
+const PIE_COLORS: Record<string, string> = {
+  'Kabul': '#3B82F6', // Mavi
+  'Red': '#EF4444',   // Kırmızı
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -46,10 +53,10 @@ export default function Dashboard() {
   const stats = getStats();
   const trendData = getTrendData(14);
 
-  // Pie chart data
+  // Pie chart data - her kategorinin kendi rengi var
   const pieData = [
-    { name: 'Kabul', value: stats.totalAccepted },
-    { name: 'Red', value: stats.totalRejected },
+    { name: 'Kabul', value: stats.totalAccepted, color: PIE_COLORS['Kabul'] },
+    { name: 'Red', value: stats.totalRejected, color: PIE_COLORS['Red'] },
   ].filter(d => d.value > 0);
 
   // Recent lots
@@ -60,6 +67,17 @@ export default function Dashboard() {
     suppliers.find(s => s.id === id)?.name || 'Bilinmiyor';
   const getMaterialName = (id: string) =>
     materials.find(m => m.id === id)?.name || 'Bilinmiyor';
+
+  // Rastgele lot seç ve kontrole başla
+  const handleRandomLot = () => {
+    const randomLot = selectRandomLot(lots);
+    if (randomLot) {
+      toast.success(`Rastgele seçilen: ${randomLot.lotNumber}`);
+      navigate('/inspection', { state: { lotId: randomLot.id } });
+    } else {
+      toast.error('Bekleyen parti bulunamadı');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -78,6 +96,16 @@ export default function Dashboard() {
         >
           Kontrol Yap
         </Button>
+        {stats.pendingLots > 0 && (
+          <Button
+            variant="secondary"
+            icon={<Shuffle className="w-4 h-4" />}
+            onClick={handleRandomLot}
+            className="bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800"
+          >
+            Rastgele Lot Başlat
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -188,8 +216,8 @@ export default function Dashboard() {
                     dataKey="value"
                     label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                   >
-                    {pieData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip />
