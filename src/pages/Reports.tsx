@@ -11,6 +11,7 @@ import Card, { CardHeader } from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input, { Select } from '../components/common/Input';
 import { StatusBadge, DecisionBadge } from '../components/common/Badge';
+import EmptyState from '../components/common/EmptyState';
 import {
   useLotStore,
   useSupplierStore,
@@ -263,74 +264,47 @@ export default function Reports() {
       {/* Table */}
       <Card padding="none">
         {filteredLots.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="table-container">
+            <table className="table-modern">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Parti No
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Tedarikçi
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Malzeme
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Miktar
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Hatalı
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Durum
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Sonuç
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    Tarih
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    İşlem
-                  </th>
+                <tr>
+                  <th>Parti No</th>
+                  <th>Tedarikçi</th>
+                  <th>Malzeme</th>
+                  <th className="text-right">Miktar</th>
+                  <th className="text-right">Hatalı</th>
+                  <th className="text-center">Durum</th>
+                  <th className="text-center">Sonuç</th>
+                  <th>Tarih</th>
+                  <th className="text-center">İşlem</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredLots.map((lot) => (
-                  <tr
-                    key={lot.id}
-                    className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors"
-                  >
-                    <td className="py-3 px-4">
+                  <tr key={lot.id}>
+                    <td>
                       <span className="font-medium text-gray-900 dark:text-white">
                         {lot.lotNumber}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                      {getSupplierName(lot.supplierId)}
-                    </td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                      {getMaterialName(lot.materialTypeId)}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-600 dark:text-gray-400">
+                    <td>{getSupplierName(lot.supplierId)}</td>
+                    <td>{getMaterialName(lot.materialTypeId)}</td>
+                    <td className="text-right">
                       {lot.quantity.toLocaleString('tr-TR')}
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className={lot.defectCount > 0 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-600 dark:text-gray-400'}>
+                    <td className="text-right">
+                      <span className={lot.defectCount > 0 ? 'text-red-600 dark:text-red-400 font-medium' : ''}>
                         {lot.defectCount}/{lot.sampleSize}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-center">
+                    <td className="text-center">
                       <StatusBadge status={lot.status} />
                     </td>
-                    <td className="py-3 px-4 text-center">
+                    <td className="text-center">
                       <DecisionBadge decision={lot.decision} />
                     </td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                      {formatDate(lot.createdAt)}
-                    </td>
-                    <td className="py-3 px-4">
+                    <td>{formatDate(lot.createdAt)}</td>
+                    <td>
                       <div className="flex items-center justify-center gap-1">
                         {lot.status === 'completed' && (
                           <>
@@ -358,15 +332,11 @@ export default function Reports() {
             </table>
           </div>
         ) : (
-          <div className="text-center py-12">
-            <Package className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Kayıt bulunamadı
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400">
-              Filtreleri değiştirerek tekrar deneyin
-            </p>
-          </div>
+          <EmptyState
+            icon={<Package className="w-10 h-10" />}
+            title="Kayıt bulunamadı"
+            description="Filtreleri değiştirerek tekrar deneyin"
+          />
         )}
       </Card>
     </div>

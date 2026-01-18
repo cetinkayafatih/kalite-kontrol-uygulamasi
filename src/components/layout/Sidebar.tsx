@@ -7,6 +7,7 @@ import {
   Building2,
   BarChart3,
   Settings,
+  History,
   Factory,
   X
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const menuItems = [
   { path: '/reports', icon: FileText, label: 'Raporlar' },
   { path: '/suppliers', icon: Building2, label: 'Tedarikçiler' },
   { path: '/analytics', icon: BarChart3, label: 'Analiz' },
+  { path: '/audit-logs', icon: History, label: 'Denetim Kayıtları' },
   { path: '/settings', icon: Settings, label: 'Ayarlar' },
 ];
 

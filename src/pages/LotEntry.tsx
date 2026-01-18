@@ -152,20 +152,20 @@ export default function LotEntry() {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.supplierId || !formData.materialTypeId || !formData.quantity) {
-      toast.error('Lütfen zorunlu alanları doldurun');
+      toast.error('Lutfen zorunlu alanlari doldurun');
       return;
     }
 
     if (!samplingResult) {
-      toast.error('Geçerli bir parti miktarı girin');
+      toast.error('Gecerli bir parti miktari girin');
       return;
     }
 
-    // Parti yapısı girilmişse numune pozisyonlarını oluştur
+    // Parti yapisi girilmisse numune pozisyonlarini olustur
     let samplePositions = undefined;
     let lotPackageConfig = undefined;
 
@@ -174,7 +174,7 @@ export default function LotEntry() {
       lotPackageConfig = { ...packageConfig };
     }
 
-    const lot = addLot({
+    const lot = await addLot({
       supplierId: formData.supplierId,
       materialTypeId: formData.materialTypeId,
       quantity: parseInt(formData.quantity),
@@ -194,7 +194,7 @@ export default function LotEntry() {
       currentSampleIndex: 0,
     });
 
-    toast.success('Parti başarıyla oluşturuldu');
+    toast.success('Parti basariyla olusturuldu');
     navigate('/inspection', { state: { lotId: lot.id } });
   };
 

@@ -27,6 +27,7 @@ import Card, { CardHeader } from '../components/common/Card';
 import StatsCard from '../components/common/StatsCard';
 import Button from '../components/common/Button';
 import { DecisionBadge } from '../components/common/Badge';
+import EmptyState from '../components/common/EmptyState';
 import {
   useLotStore,
   useSupplierStore,
@@ -279,39 +280,33 @@ export default function Dashboard() {
           }
         />
         {recentLots.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="table-container">
+            <table className="table-modern">
               <thead>
-                <tr className="border-b border-gray-200 dark:border-slate-700">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">Parti No</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">Malzeme</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">Tedarikçi</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">Tarih</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-600 dark:text-gray-400">Sonuç</th>
+                <tr>
+                  <th>Parti No</th>
+                  <th>Malzeme</th>
+                  <th>Tedarikçi</th>
+                  <th>Tarih</th>
+                  <th>Sonuç</th>
                 </tr>
               </thead>
               <tbody>
                 {recentLots.map((lot) => (
                   <tr
                     key={lot.id}
-                    className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
+                    className="cursor-pointer"
                     onClick={() => navigate(`/reports?lot=${lot.id}`)}
                   >
-                    <td className="py-3 px-4">
+                    <td>
                       <span className="font-medium text-gray-900 dark:text-white">
                         {lot.lotNumber}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                      {getMaterialName(lot.materialTypeId)}
-                    </td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                      {getSupplierName(lot.supplierId)}
-                    </td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
-                      {formatDate(lot.createdAt)}
-                    </td>
-                    <td className="py-3 px-4">
+                    <td>{getMaterialName(lot.materialTypeId)}</td>
+                    <td>{getSupplierName(lot.supplierId)}</td>
+                    <td>{formatDate(lot.createdAt)}</td>
+                    <td>
                       <DecisionBadge decision={lot.decision} />
                     </td>
                   </tr>
@@ -320,19 +315,17 @@ export default function Dashboard() {
             </table>
           </div>
         ) : (
-          <div className="text-center py-12">
-            <Package className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              Henüz kontrol yapılmadı
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
-              İlk partinizi girerek kalite kontrole başlayın
-            </p>
-            <Button onClick={() => navigate('/lot-entry')}>
-              <Plus className="w-4 h-4 mr-2" />
-              Yeni Parti Girişi
-            </Button>
-          </div>
+          <EmptyState
+            icon={<Package className="w-10 h-10" />}
+            title="Henüz kontrol yapılmadı"
+            description="İlk partinizi girerek kalite kontrole başlayın"
+            action={
+              <Button onClick={() => navigate('/lot-entry')}>
+                <Plus className="w-4 h-4 mr-2" />
+                Yeni Parti Girişi
+              </Button>
+            }
+          />
         )}
       </Card>
     </div>

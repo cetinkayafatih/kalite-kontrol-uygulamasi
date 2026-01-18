@@ -226,8 +226,8 @@ export default function Settings() {
             >
               <span
                 className={`
-                  absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200
-                  ${settings.darkMode ? 'translate-x-8' : 'translate-x-1'}
+                  absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200
+                  ${settings.darkMode ? 'translate-x-7' : 'translate-x-0'}
                 `}
               />
             </button>

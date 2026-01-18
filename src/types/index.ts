@@ -91,7 +91,8 @@ export interface Inspection {
   isDefective: boolean;
   defects: InspectionDefect[];
   notes: string;
-  photoBase64: string | null;
+  photoBase64: string | null;  // Eski sistem (geriye uyumluluk)
+  photoUrl: string | null;      // Yeni sistem (Supabase Storage)
   inspectedAt: string;
 }
 
@@ -158,3 +159,29 @@ export type InspectionStatus = 'pending' | 'in-progress' | 'completed';
 export type Decision = 'accepted' | 'rejected' | null;
 export type Severity = 'critical' | 'major' | 'minor';
 export type InspectionLevel = 'I' | 'II' | 'III';
+
+// ============================================
+// AUDIT LOG (Denetim Kayıtları)
+// ============================================
+
+export interface AuditLog {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  tableName: string;
+  recordId: string;
+  action: 'create' | 'update' | 'delete';
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  changedFields: string[] | null;
+  createdAt: string;
+}
+
+export interface AuditLogFilter {
+  tableName?: string;
+  recordId?: string;
+  userId?: string;
+  action?: 'create' | 'update' | 'delete';
+  startDate?: string;
+  endDate?: string;
+}

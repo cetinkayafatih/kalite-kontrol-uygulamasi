@@ -26,6 +26,7 @@ import { makeDecision } from '../data/samplingData';
 import { SWITCHING_LEVEL_LABELS } from '../types/switching';
 import SwitchingBadge from '../components/switching/SwitchingBadge';
 import StopProductionModal from '../components/switching/StopProductionModal';
+import { storageService } from '../services/supabaseService';
 import toast from 'react-hot-toast';
 
 interface DefectSelection {
@@ -50,6 +51,8 @@ export default function Inspection() {
   const [selectedDefects, setSelectedDefects] = useState<DefectSelection[]>([]);
   const [notes, setNotes] = useState('');
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
   const [finalDecision, setFinalDecision] = useState<'accepted' | 'rejected' | null>(null);
@@ -58,6 +61,7 @@ export default function Inspection() {
   // Initialize lot
   useEffect(() => {
     if (lotId) {
+      // Belirli bir parti ID'si ile geldiyse, o partiyi yükle
       const lot = getLotById(lotId);
       if (lot) {
         setCurrentLot(lot);
@@ -66,6 +70,10 @@ export default function Inspection() {
         }
         clearCurrentInspections();
       }
+    } else {
+      // lotId yoksa (sidebar'dan direkt tıklandıysa), currentLot'u temizle
+      // Kullanıcı bekleyen partilerden seçim yapmalı
+      setCurrentLot(null);
     }
   }, [lotId]);
 
@@ -102,6 +110,7 @@ export default function Inspection() {
       defects: [],
       notes: '',
       photoBase64: null,
+      photoUrl: null,
     });
 
     if (currentSampleNumber >= currentLot.sampleSize) {
@@ -119,43 +128,66 @@ export default function Inspection() {
     setShowDefectModal(true);
   };
 
-  const confirmDefect = () => {
+  const confirmDefect = async () => {
     if (!currentLot) return;
 
-    const newDefectCount = defectCount + 1;
-    setDefectCount(newDefectCount);
+    setIsUploading(true);
 
-    addInspection({
-      lotId: currentLot.id,
-      sampleNumber: currentSampleNumber,
-      isDefective: true,
-      defects: selectedDefects.map((d) => ({
-        criterionId: '',
-        defectTypeId: d.defectTypeId,
-        description: d.description,
-      })),
-      notes,
-      photoBase64,
-    });
+    try {
+      // Fotoğraf varsa Supabase Storage'a yükle
+      let photoUrl: string | null = null;
+      if (photoFile) {
+        try {
+          photoUrl = await storageService.uploadPhoto(
+            photoFile,
+            currentLot.id,
+            currentSampleNumber
+          );
+        } catch (uploadError) {
+          console.error('Fotoğraf yüklenemedi:', uploadError);
+          toast.error('Fotoğraf yüklenemedi, kayıt fotoğrafsız devam ediyor');
+        }
+      }
 
-    // Check if rejection threshold reached
-    if (newDefectCount >= currentLot.rejectionNumber) {
-      setFinalDecision('rejected');
-      setShowResultModal(true);
-    } else if (currentSampleNumber >= currentLot.sampleSize) {
-      finishInspection();
-    } else {
-      const nextIndex = currentSampleNumber;
-      setCurrentSampleNumber((prev) => prev + 1);
-      // Store'da güncel indeksi kaydet
-      updateCurrentSampleIndex(currentLot.id, nextIndex);
+      const newDefectCount = defectCount + 1;
+      setDefectCount(newDefectCount);
+
+      addInspection({
+        lotId: currentLot.id,
+        sampleNumber: currentSampleNumber,
+        isDefective: true,
+        defects: selectedDefects.map((d) => ({
+          criterionId: '',
+          defectTypeId: d.defectTypeId,
+          description: d.description,
+        })),
+        notes,
+        photoBase64: null, // Artık base64 kullanmıyoruz
+        photoUrl, // Yeni: Storage URL
+      });
+
+      // Check if rejection threshold reached
+      if (newDefectCount >= currentLot.rejectionNumber) {
+        setFinalDecision('rejected');
+        setShowResultModal(true);
+      } else if (currentSampleNumber >= currentLot.sampleSize) {
+        finishInspection();
+      } else {
+        const nextIndex = currentSampleNumber;
+        setCurrentSampleNumber((prev) => prev + 1);
+        // Store'da güncel indeksi kaydet
+        updateCurrentSampleIndex(currentLot.id, nextIndex);
+      }
+
+      // Reset modal state
+      setShowDefectModal(false);
+      setSelectedDefects([]);
+      setNotes('');
+      setPhotoBase64(null);
+      setPhotoFile(null);
+    } finally {
+      setIsUploading(false);
     }
-
-    // Reset modal state
-    setShowDefectModal(false);
-    setSelectedDefects([]);
-    setNotes('');
-    setPhotoBase64(null);
   };
 
   const finishInspection = () => {
@@ -168,13 +200,13 @@ export default function Inspection() {
     setShowResultModal(true);
   };
 
-  const completeInspection = () => {
+  const completeInspection = async () => {
     if (!currentLot || !finalDecision) return;
 
-    completeLot(currentLot.id, finalDecision, defectCount);
+    await completeLot(currentLot.id, finalDecision, defectCount);
 
-    // Switching kurallarını güncelle
-    const { transition, shouldStop } = updateSwitchingState(
+    // Switching kurallarini guncelle
+    const { transition, shouldStop } = await updateSwitchingState(
       currentLot.supplierId,
       currentLot.materialTypeId,
       finalDecision,
@@ -182,12 +214,12 @@ export default function Inspection() {
       currentLot.lotNumber
     );
 
-    // Seviye değişimi bildirimi
+    // Seviye degisimi bildirimi
     if (transition) {
-      const fromLabel = SWITCHING_LEVEL_LABELS[transition.fromLevel];
-      const toLabel = SWITCHING_LEVEL_LABELS[transition.toLevel];
+      const fromLabel = SWITCHING_LEVEL_LABELS[transition.fromLevel as keyof typeof SWITCHING_LEVEL_LABELS];
+      const toLabel = SWITCHING_LEVEL_LABELS[transition.toLevel as keyof typeof SWITCHING_LEVEL_LABELS];
       toast(
-        `Kontrol seviyesi değişti: ${fromLabel} → ${toLabel}`,
+        `Kontrol seviyesi degisti: ${fromLabel} → ${toLabel}`,
         {
           icon: transition.toLevel === 'tightened' ? '⚠️' : transition.toLevel === 'reduced' ? '✅' : 'ℹ️',
           duration: 5000,
@@ -201,7 +233,7 @@ export default function Inspection() {
         : 'Parti reddedildi.'
     );
 
-    // Üretim durdurma uyarısı
+    // Uretim durdurma uyarisi
     if (shouldStop) {
       setShowStopModal(true);
     } else {
@@ -241,6 +273,10 @@ export default function Inspection() {
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Dosyayı sakla (Supabase'e yüklemek için)
+      setPhotoFile(file);
+
+      // Önizleme için base64'e çevir
       const reader = new FileReader();
       reader.onloadend = () => {
         setPhotoBase64(reader.result as string);
@@ -258,46 +294,61 @@ export default function Inspection() {
         <Card>
           <div className="text-center py-8">
             <Package className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Kontrol Edilecek Parti Seçin
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-6">
-              Aşağıdaki bekleyen partilerden birini seçin veya yeni parti oluşturun
-            </p>
 
             {pendingLots.length > 0 ? (
-              <div className="space-y-3 max-w-md mx-auto">
-                {pendingLots.map((lot) => (
-                  <button
-                    key={lot.id}
-                    onClick={() => {
-                      setCurrentLot(lot);
-                      if (lot.status === 'pending') {
-                        updateLot(lot.id, { status: 'in-progress' });
-                      }
-                      clearCurrentInspections();
-                      setCurrentSampleNumber(1);
-                      setDefectCount(0);
-                    }}
-                    className="w-full p-4 bg-gray-50 dark:bg-slate-700 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors text-left flex items-center justify-between"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">
-                        {lot.lotNumber}
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {materials.find((m) => m.id === lot.materialTypeId)?.name} -{' '}
-                        {lot.quantity.toLocaleString('tr-TR')} {materials.find((m) => m.id === lot.materialTypeId)?.unit || 'adet'}
-                      </p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                  </button>
-                ))}
-              </div>
+              <>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  Kontrol Edilecek Parti Seçin
+                </h2>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                  Aşağıdaki bekleyen partilerden birini seçin
+                </p>
+                <div className="space-y-3 max-w-md mx-auto">
+                  {pendingLots.map((lot) => (
+                    <button
+                      key={lot.id}
+                      onClick={() => {
+                        setCurrentLot(lot);
+                        if (lot.status === 'pending') {
+                          updateLot(lot.id, { status: 'in-progress' });
+                        }
+                        clearCurrentInspections();
+                        setCurrentSampleNumber(1);
+                        setDefectCount(0);
+                      }}
+                      className="w-full p-4 bg-gray-50 dark:bg-slate-700 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors text-left flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {lot.lotNumber}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {materials.find((m) => m.id === lot.materialTypeId)?.name} -{' '}
+                          {lot.quantity.toLocaleString('tr-TR')} {materials.find((m) => m.id === lot.materialTypeId)?.unit || 'adet'}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
+                  <Button variant="secondary" onClick={() => navigate('/lot-entry')}>
+                    Yeni Parti Oluştur
+                  </Button>
+                </div>
+              </>
             ) : (
-              <Button onClick={() => navigate('/lot-entry')}>
-                Yeni Parti Girişi
-              </Button>
+              <>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  Bekleyen Parti Yok
+                </h2>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                  Kontrol yapılacak bekleyen parti bulunmuyor. Yeni bir parti oluşturun.
+                </p>
+                <Button onClick={() => navigate('/lot-entry')}>
+                  Yeni Parti Oluştur
+                </Button>
+              </>
             )}
           </div>
         </Card>
@@ -675,16 +726,17 @@ export default function Inspection() {
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
-            <Button variant="secondary" onClick={() => setShowDefectModal(false)}>
+            <Button variant="secondary" onClick={() => setShowDefectModal(false)} disabled={isUploading}>
               İptal
             </Button>
             <Button
               variant="danger"
               onClick={confirmDefect}
-              disabled={selectedDefects.length === 0}
+              disabled={selectedDefects.length === 0 || isUploading}
+              loading={isUploading}
             >
               <XCircle className="w-4 h-4 mr-2" />
-              Hatalı Olarak İşaretle
+              {isUploading ? 'Yükleniyor...' : 'Hatalı Olarak İşaretle'}
             </Button>
           </div>
         </div>

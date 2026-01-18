@@ -4,10 +4,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { SwitchingState, SwitchingTransition } from '../types/switching';
 import { createDefaultSwitchingState, evaluateSwitching } from '../utils/switchingLogic';
+import { switchingService } from '../services/supabaseService';
 
 interface SwitchingStore {
   // State: key = `${supplierId}-${materialTypeId}`
   states: Record<string, SwitchingState>;
+  isLoaded: boolean;
 
   // Actions
   getState: (supplierId: string, materialTypeId: string) => SwitchingState;
@@ -17,16 +19,19 @@ interface SwitchingStore {
     result: 'accepted' | 'rejected',
     lotId: string,
     lotNumber: string
-  ) => { transition: SwitchingTransition | null; shouldStop: boolean };
+  ) => Promise<{ transition: SwitchingTransition | null; shouldStop: boolean }>;
   getHistory: (supplierId: string, materialTypeId: string) => SwitchingTransition[];
-  resetState: (supplierId: string, materialTypeId: string) => void;
-  clearStopFlag: (supplierId: string, materialTypeId: string) => void;
+  resetState: (supplierId: string, materialTypeId: string) => Promise<void>;
+  clearStopFlag: (supplierId: string, materialTypeId: string) => Promise<void>;
 
-  // Tüm tedarikçilerin durumlarını getir
+  // Tum tedarikcilerin durumlarini getir
   getAllStatesForSupplier: (supplierId: string) => SwitchingState[];
+
+  // Supabase sync
+  loadFromSupabase: () => Promise<void>;
 }
 
-// Key oluşturma yardımcı fonksiyonu
+// Key olusturma yardimci fonksiyonu
 const createKey = (supplierId: string, materialTypeId: string): string => {
   return `${supplierId}-${materialTypeId}`;
 };
@@ -35,6 +40,7 @@ export const useSwitchingStore = create<SwitchingStore>()(
   persist(
     (set, get) => ({
       states: {},
+      isLoaded: false,
 
       getState: (supplierId, materialTypeId) => {
         const key = createKey(supplierId, materialTypeId);
@@ -44,7 +50,7 @@ export const useSwitchingStore = create<SwitchingStore>()(
           return existing;
         }
 
-        // Yoksa yeni oluştur
+        // Yoksa yeni olustur
         const newState = createDefaultSwitchingState(supplierId, materialTypeId);
         set((state) => ({
           states: {
@@ -55,7 +61,7 @@ export const useSwitchingStore = create<SwitchingStore>()(
         return newState;
       },
 
-      updateState: (supplierId, materialTypeId, result, lotId, lotNumber) => {
+      updateState: async (supplierId, materialTypeId, result, lotId, lotNumber) => {
         const key = createKey(supplierId, materialTypeId);
         const currentState = get().getState(supplierId, materialTypeId);
 
@@ -73,6 +79,13 @@ export const useSwitchingStore = create<SwitchingStore>()(
           },
         }));
 
+        // Sync to Supabase
+        try {
+          await switchingService.upsert(newState);
+        } catch (error) {
+          console.error('Failed to sync switching state to Supabase:', error);
+        }
+
         return {
           transition,
           shouldStop: newState.shouldStopProduction,
@@ -85,7 +98,7 @@ export const useSwitchingStore = create<SwitchingStore>()(
         return state?.history || [];
       },
 
-      resetState: (supplierId, materialTypeId) => {
+      resetState: async (supplierId, materialTypeId) => {
         const key = createKey(supplierId, materialTypeId);
         const newState = createDefaultSwitchingState(supplierId, materialTypeId);
 
@@ -95,23 +108,37 @@ export const useSwitchingStore = create<SwitchingStore>()(
             [key]: newState,
           },
         }));
+
+        try {
+          await switchingService.upsert(newState);
+        } catch (error) {
+          console.error('Failed to reset switching state in Supabase:', error);
+        }
       },
 
-      clearStopFlag: (supplierId, materialTypeId) => {
+      clearStopFlag: async (supplierId, materialTypeId) => {
         const key = createKey(supplierId, materialTypeId);
         const currentState = get().states[key];
 
         if (currentState) {
+          const updatedState = {
+            ...currentState,
+            shouldStopProduction: false,
+            consecutiveRejects: 0,
+          };
+
           set((state) => ({
             states: {
               ...state.states,
-              [key]: {
-                ...currentState,
-                shouldStopProduction: false,
-                consecutiveRejects: 0,
-              },
+              [key]: updatedState,
             },
           }));
+
+          try {
+            await switchingService.upsert(updatedState);
+          } catch (error) {
+            console.error('Failed to clear stop flag in Supabase:', error);
+          }
         }
       },
 
@@ -120,6 +147,23 @@ export const useSwitchingStore = create<SwitchingStore>()(
         return Object.values(allStates).filter(
           (state) => state.supplierId === supplierId
         );
+      },
+
+      loadFromSupabase: async () => {
+        try {
+          const states = await switchingService.getAll();
+          const statesMap: Record<string, SwitchingState> = {};
+
+          states.forEach((state) => {
+            const key = createKey(state.supplierId, state.materialTypeId);
+            statesMap[key] = state;
+          });
+
+          set({ states: statesMap, isLoaded: true });
+        } catch (error) {
+          console.error('Failed to load switching states from Supabase:', error);
+          set({ isLoaded: true });
+        }
       },
     }),
     {

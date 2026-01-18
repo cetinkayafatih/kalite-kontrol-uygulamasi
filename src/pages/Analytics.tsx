@@ -14,7 +14,8 @@ import {
   Legend,
   AreaChart,
   Area,
-  ComposedChart
+  ComposedChart,
+  ReferenceLine
 } from 'recharts';
 import {
   TrendingUp,
@@ -227,14 +228,9 @@ export default function Analytics() {
                   fillOpacity={1}
                   fill="url(#colorOC)"
                 />
-                {/* AQL line */}
-                <Line
-                  type="monotone"
-                  data={[{ p: 2.5, pa: 0 }, { p: 2.5, pa: 100 }]}
-                  dataKey="pa"
-                  stroke="#10B981"
-                  strokeDasharray="5 5"
-                />
+                {/* AQL ve LTPD referans çizgileri */}
+                <ReferenceLine x={2.5} stroke="#10B981" strokeDasharray="5 5" />
+                <ReferenceLine x={8} stroke="#EF4444" strokeDasharray="5 5" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
