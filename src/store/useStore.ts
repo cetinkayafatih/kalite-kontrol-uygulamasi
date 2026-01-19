@@ -832,3 +832,23 @@ export async function initializeFromSupabase(): Promise<void> {
     syncStore.setLoading(false);
   }
 }
+
+// ============================================
+// DEMO DATA LOADING
+// ============================================
+
+export async function loadDemoData(): Promise<{ lots: number; inspections: number }> {
+  const { generateDemoData } = await import('../data/demoData');
+  const { lots, inspections } = generateDemoData();
+
+  // Store'lara yükle
+  useLotStore.setState({ lots, isLoaded: true });
+  useInspectionStore.setState({ inspections, isLoaded: true });
+
+  return { lots: lots.length, inspections: inspections.length };
+}
+
+export function clearAllData(): void {
+  useLotStore.setState({ lots: [], currentLot: null, isLoaded: true });
+  useInspectionStore.setState({ inspections: [], currentInspections: [], isLoaded: true });
+}

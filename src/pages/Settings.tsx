@@ -6,7 +6,8 @@ import {
   Sun,
   Moon,
   Globe,
-  AlertTriangle
+  AlertTriangle,
+  Database
 } from 'lucide-react';
 import Card, { CardHeader } from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -17,7 +18,8 @@ import {
   useLotStore,
   useSupplierStore,
   useMaterialStore,
-  useInspectionStore
+  useInspectionStore,
+  loadDemoData
 } from '../store/useStore';
 import { aqlOptions, inspectionLevels } from '../data/samplingData';
 import toast from 'react-hot-toast';
@@ -33,7 +35,20 @@ export default function Settings() {
   const [defaultAQL, setDefaultAQL] = useState(settings.defaultAQL);
   const [defaultLevel, setDefaultLevel] = useState<'I' | 'II' | 'III'>(settings.defaultInspectionLevel);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLoadDemoData = async () => {
+    setIsLoadingDemo(true);
+    try {
+      const result = await loadDemoData();
+      toast.success(`Demo veri yuklendi: ${result.lots} parti, ${result.inspections} kontrol`);
+    } catch (error) {
+      toast.error('Demo veri yuklenemedi');
+    } finally {
+      setIsLoadingDemo(false);
+    }
+  };
 
   const handleSaveSettings = () => {
     setSettings({
@@ -345,21 +360,45 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* Demo Data */}
+          <div className="flex items-center justify-between p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+            <div className="flex items-center gap-3">
+              <Database className="w-5 h-5 text-purple-500" />
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">
+                  Demo Veri Yukle
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  30 parti (24 kabul, 6 red) ornek veri yukle
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={handleLoadDemoData}
+              loading={isLoadingDemo}
+              disabled={isLoadingDemo}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              {isLoadingDemo ? 'Yukleniyor...' : 'Demo Yukle'}
+            </Button>
+          </div>
+
           {/* Reset */}
           <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
             <div className="flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 text-red-500" />
               <div>
                 <p className="font-medium text-gray-900 dark:text-white">
-                  Verileri Sıfırla
+                  Verileri Sifirla
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Tüm parti ve kontrol verilerini sil
+                  Tum parti ve kontrol verilerini sil
                 </p>
               </div>
             </div>
             <Button variant="danger" onClick={() => setShowResetConfirm(true)}>
-              Sıfırla
+              Sifirla
             </Button>
           </div>
         </div>
