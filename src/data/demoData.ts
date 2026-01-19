@@ -2,16 +2,13 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Lot, Inspection } from '../types';
 
 // Demo veri oluşturma - 30 lot, 24 kabul, 6 red
-// Redler etiket tedarikçilerine dağıtılmış
+// Tüm kontroller etiket kontrolü, iplikçi hariç
 
-const suppliers = [
+// Sadece etiket tedarikçileri (XYZ İplik hariç)
+const labelSuppliers = [
   { id: 'sup-001', name: 'ABC Etiket Ltd. Şti.' },
-  { id: 'sup-002', name: 'XYZ İplik San. A.Ş.' },
   { id: 'sup-003', name: 'Tekstil Malzeme Tic.' },
 ];
-
-// Etiket tedarikçileri (red dağıtımı için)
-const labelSuppliers = ['sup-001', 'sup-003'];
 
 function randomDate(daysAgo: number): string {
   const date = new Date();
@@ -40,20 +37,10 @@ export function generateDemoData(): { lots: Lot[]; inspections: Inspection[] } {
     const isRejected = rejectedIndices.includes(i);
     const lotId = uuidv4();
 
-    // Red lotları etiket tedarikçilerine dağıt
-    let supplierId: string;
-    let materialTypeId: string;
-
-    if (isRejected) {
-      // Redler etiket tedarikçilerine
-      supplierId = labelSuppliers[i % labelSuppliers.length];
-      materialTypeId = 'mat-label';
-    } else {
-      // Kabul edilenler karışık
-      const supplierIndex = i % suppliers.length;
-      supplierId = suppliers[supplierIndex].id;
-      materialTypeId = supplierIndex === 1 ? 'mat-yarn' : 'mat-label';
-    }
+    // Tüm lotlar etiket tedarikçilerine dağıtılıyor (iplikçi hariç)
+    const supplierIndex = i % labelSuppliers.length;
+    const supplierId = labelSuppliers[supplierIndex].id;
+    const materialTypeId = 'mat-label'; // Tüm kontroller etiket kontrolü
 
     const lotSize = [500, 1000, 2000, 3000, 5000][Math.floor(Math.random() * 5)];
     const sampleSize = Math.min(Math.floor(lotSize * 0.05), 125);
@@ -142,7 +129,7 @@ export function getDemoDataSummary(lots: Lot[]): {
     bySupplier: {} as Record<string, { accepted: number; rejected: number }>,
   };
 
-  suppliers.forEach(s => {
+  labelSuppliers.forEach(s => {
     const supplierLots = lots.filter(l => l.supplierId === s.id);
     summary.bySupplier[s.name] = {
       accepted: supplierLots.filter(l => l.decision === 'accepted').length,
